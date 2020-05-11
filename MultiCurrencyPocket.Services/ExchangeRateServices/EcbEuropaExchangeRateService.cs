@@ -1,8 +1,11 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
+using MultiCurrencyPocket.Services.Exceptions;
 using System;
+using System.Globalization;
 using System.Net.Http;
 using System.Threading.Tasks;
+using System.Xml;
 using System.Xml.Linq;
 using System.Xml.XPath;
 
@@ -34,7 +37,7 @@ namespace MultiCurrencyPocket.Services.ExchangeRateServices
             if (SourceCurrency == DestinationCurrency)
                 return 1.0m;
             var sourcerRate = await GetRateAsync(SourceCurrency);
-            var destRate = await GetRateAsync(SourceCurrency);
+            var destRate = await GetRateAsync(DestinationCurrency);
 
             return destRate / sourcerRate;
         }
@@ -48,7 +51,7 @@ namespace MultiCurrencyPocket.Services.ExchangeRateServices
             {
                 await InitRatesCache();
                 if (!memoryCache.TryGetValue(GetKey(currency), out resultRate))
-                    throw new Exception(string.Format("Currencynot found {0}", currency));
+                    throw new CurrencyRateNotFoundException();
             }
             return resultRate;
         }
@@ -58,13 +61,21 @@ namespace MultiCurrencyPocket.Services.ExchangeRateServices
         protected async Task InitRatesCache() 
         {
             var xml = await LoadRatesXml();
-            var xDoc = XDocument.Load(xml);
-            var items = xDoc.XPathSelectElements("./Cube/Cube/Cube");
+            var xDoc = XDocument.Parse(xml);
+            
+            var namespaceManager = new XmlNamespaceManager(new NameTable());
+            namespaceManager.AddNamespace("ecb", @"http://www.ecb.int/vocabulary/2002-08-01/eurofxref");
+            namespaceManager.AddNamespace("gesmes", @"http://www.ecb.int/vocabulary/2002-08-01/eurofxref");
+            
+            var items = xDoc.XPathSelectElements("//ecb:Cube/ecb:Cube/ecb:Cube", namespaceManager);
+
+            var style = NumberStyles.AllowDecimalPoint | NumberStyles.AllowThousands;
             
             foreach (var item in items) 
             {
                 var currency = item.Attribute("currency").Value;
-                var rate = decimal.Parse(item.Attribute("rate").Value);
+                var rate = decimal.Parse(item.Attribute("rate").Value, style, CultureInfo.InvariantCulture);
+
                 AddToCache(currency, rate);
             }
         }

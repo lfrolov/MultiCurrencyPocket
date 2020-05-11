@@ -33,16 +33,32 @@ namespace MultiCurrencyPocket.Services.DataService
             
             var accounts =  holder.Accounts.Where(acc => (acc.Currency == request.SourceCurrency) || (acc.Currency == request.DestinationCurrency));
 
-            var sourceAccount = accounts.First(a => a.Currency == request.SourceCurrency);
-            var destAccount = accounts.First(a => a.Currency == request.DestinationCurrency);
-            
-            var convertRate = await RateService.GetRateAsync(request.SourceCurrency, request.DestinationCurrency);
+            var sourceAccount = accounts.FirstOrDefault(a => a.Currency == request.SourceCurrency);
+            if (sourceAccount == null) 
+            {
+                throw new AccountNotFoundException(string.Format(AccountNotFoundException.WrongCurrencyMessage, request.SourceCurrency));
+            }
+            var destAccount = accounts.FirstOrDefault(a => a.Currency == request.DestinationCurrency);
+            if (destAccount == null)
+            {
+                throw new AccountNotFoundException(string.Format(AccountNotFoundException.WrongCurrencyMessage, request.DestinationCurrency));
+            }
 
-            var debit = request.Sum * convertRate;
-
-            sourceAccount.Debit -= request.Sum;
-            destAccount.Debit += debit;
-
+            if (sourceAccount.Debit < request.Sum)
+            {
+                throw new InsufficientFundException();
+            }
+            try
+            {
+                var convertRate = await RateService.GetRateAsync(request.SourceCurrency, request.DestinationCurrency);
+                var debit = request.Sum * convertRate;
+                sourceAccount.Debit -= request.Sum;
+                destAccount.Debit += debit;
+            }
+            catch (CurrencyRateNotFoundException ex) 
+            {
+                throw;
+            }
             try
             {
                 DbContext.Update(sourceAccount);
@@ -53,8 +69,6 @@ namespace MultiCurrencyPocket.Services.DataService
             {
                 throw new ConcurrencyException();
             }
-
-
         }
 
         public async Task<decimal> DepositCurrencyAccountAsync(DepositCurrencyDTO request)
