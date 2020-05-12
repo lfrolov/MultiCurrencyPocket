@@ -82,7 +82,7 @@ namespace MultiCurrencyPocket.Services.ExchangeRateServices
 
         protected void AddToCache(string currency, decimal rate)
         {
-            memoryCache.Set(GetKey(currency), rate, new DateTimeOffset(DateTime.Today.AddDays(1).ToUniversalTime()));
+            memoryCache.Set(GetKey(currency), rate, new DateTimeOffset(DateTime.Today.AddSeconds(UpdateFrequency).ToUniversalTime()));
         }
 
         protected async Task<string> LoadRatesXml() 
